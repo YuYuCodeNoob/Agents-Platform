@@ -5,10 +5,12 @@ import { eventBus } from './events/eventBus.js';
 import { OpenAIAdapter } from './proxy/protocolAdapters/openaiAdapter.js';
 import { AnthropicAdapter } from './proxy/protocolAdapters/anthropicAdapter.js';
 import { InjectionEngine } from './injection/injectionEngine.js';
-import { SystemPromptSuffixInjector } from './injection/systemPromptInjector.js';
-import { ToolListSuffixInjector } from './injection/toolListInjector.js';
+import { SystemPromptSuffixHook } from './injection/systemPromptInjector.js';
+import { ToolListAppendHook } from './injection/toolListInjector.js';
 import { LLMProxyHandler } from './proxy/llmProxyHandler.js';
 import { MemoryPipeline } from './memory/pipeline.js';
+import { L1Extractor } from './memory/extraction/l1-extractor.js';
+import { createEmbeddingService } from './memory/embedding.js';
 import { MessageBus } from './mq/messageBus.js';
 import { registerAllTools } from './tools/toolHandlers.js';
 import { toolRegistry } from './tools/toolRegistry.js';
@@ -18,12 +20,31 @@ import { MockIMAdapter } from './im/adapters/mockAdapter.js';
 async function main() {
   const config = loadConfig();
 
+  const embeddingService = createEmbeddingService({
+    apiUrl: config.openaiApiBase,
+    apiKey: process.env.OPENAI_API_KEY,
+    model: process.env.EMBEDDING_MODEL ?? 'text-embedding-3-small',
+    dimensions: 1536,
+  });
+
   const memory = new MemoryPipeline({
     jsonlDir: config.jsonlDir,
     sqliteDbPath: config.sqliteDbPath,
     skillsDir: config.skillsDir,
     personalityDir: config.personalityDir,
   });
+  memory.setEmbeddingService(embeddingService);
+
+  const extractor = new L1Extractor(
+    {
+      llmApiUrl: config.openaiApiBase,
+      llmApiKey: process.env.OPENAI_API_KEY ?? '',
+      llmModel: process.env.EXTRACTION_MODEL ?? 'gpt-4o-mini',
+      promptMode: 'chat',
+    },
+    embeddingService
+  );
+  memory.setExtractor(extractor);
 
   let mq: MessageBus;
   try {
@@ -38,8 +59,8 @@ async function main() {
   registerAllTools(memory, mq);
 
   const injectionEngine = new InjectionEngine();
-  injectionEngine.add(new SystemPromptSuffixInjector());
-  injectionEngine.add(new ToolListSuffixInjector(toolRegistry.getAllDefinitions()));
+  injectionEngine.add(new SystemPromptSuffixHook());
+  injectionEngine.add(new ToolListAppendHook(toolRegistry.getAllDefinitions()));
 
   const adapters = [new OpenAIAdapter(), new AnthropicAdapter()];
 
@@ -77,6 +98,8 @@ async function main() {
 
   server.start();
   console.log('[Gateway] All systems ready');
+  console.log(`[Gateway] Vector search: ${memory['sqlite'].isVectorSupported() ? 'enabled' : 'disabled (sqlite-vec not loaded)'}`);
+  console.log(`[Gateway] L1 extraction: ${process.env.OPENAI_API_KEY ? 'enabled' : 'disabled (no API key)'}`);
 }
 
 main().catch((err) => {

@@ -1,4 +1,4 @@
-import type { InjectionPoint, InjectionContext } from './types.js';
+import type { InjectionHook, ContentBlock, InjectionContext } from './types.js';
 
 const GATEWAY_SYSTEM_PROMPT_SUFFIX = `
 
@@ -17,11 +17,17 @@ execute it by sending an HTTP request to the corresponding endpoint:
 Always include the X-Agent-Id header in your requests to identify yourself.
 `;
 
-export class SystemPromptSuffixInjector implements InjectionPoint {
-  name = 'SystemPromptSuffix';
-  enabled = true;
+export class SystemPromptSuffixHook implements InjectionHook {
+  id = 'system-prompt-suffix';
+  slot = 'system.suffix' as const;
+  anchor = { slot: 'memory' as const, relation: 'after' as const };
+  priority = 100;
+  cacheStrategy = 'session_init' as const;
 
-  apply(requestBody: any, ctx: InjectionContext): any {
-    return ctx.adapter.injectSystemPromptSuffix(requestBody, GATEWAY_SYSTEM_PROMPT_SUFFIX);
+  async execute(_ctx: InjectionContext): Promise<ContentBlock[] | null> {
+    return [{
+      role: 'system',
+      text: GATEWAY_SYSTEM_PROMPT_SUFFIX,
+    }];
   }
 }

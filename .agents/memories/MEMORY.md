@@ -1,0 +1,1 @@
+Gateway Proxy project: Node.js+TypeScript, single HTTP server :9800, path-based routing. Build: npm run build, Test: npx vitest run, Typecheck: npx tsc --noEmit, Dev: npm run dev

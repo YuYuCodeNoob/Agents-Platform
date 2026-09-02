@@ -54,7 +54,7 @@ export class LLMProxyHandler {
       model: requestBody.model,
     });
 
-    const injectedBody = this.injectionEngine.apply(requestBody, {
+    const injectedBody = await this.injectionEngine.apply(requestBody, {
       agentId,
       adapter,
     });

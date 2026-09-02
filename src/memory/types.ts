@@ -31,7 +31,7 @@ export interface RawMessage {
 export interface StructuredRecord {
   id: string;
   agentId: string;
-  type: 'fact' | 'summary' | 'entity' | 'relation';
+  type: string;
   content: string;
   metadata?: Record<string, unknown>;
   embedding?: Float32Array;
