@@ -8,6 +8,8 @@ import { InjectionEngine } from './injection/injectionEngine.js';
 import { SystemPromptSuffixHook } from './injection/systemPromptInjector.js';
 import { ToolListAppendHook } from './injection/toolListInjector.js';
 import { InboxDeliveryHook } from './injection/inboxDeliveryHook.js';
+import { PersonaInjectionHook } from './injection/personaInjectionHook.js';
+import { AutoRecallHook } from './injection/autoRecallHook.js';
 import { LLMProxyHandler } from './proxy/llmProxyHandler.js';
 import { MemoryPipeline } from './memory/pipeline.js';
 import { L1Extractor } from './memory/extraction/l1-extractor.js';
@@ -88,8 +90,10 @@ async function main() {
   registerAllTools(memory, mq);
 
   const injectionEngine = new InjectionEngine();
+  injectionEngine.add(new PersonaInjectionHook(config.personalityDir));
   injectionEngine.add(new SystemPromptSuffixHook());
   injectionEngine.add(new ToolListAppendHook(toolRegistry.getAllDefinitions()));
+  injectionEngine.add(new AutoRecallHook(memory));
   injectionEngine.add(new InboxDeliveryHook(mq));
 
   const adapters = [new OpenAIAdapter(), new AnthropicAdapter()];
