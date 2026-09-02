@@ -1,0 +1,31 @@
+{
+  "name": "gateway-proxy",
+  "version": "0.1.0",
+  "description": "Gateway proxy for multi-agent shared memory, cross-agent messaging, and tool injection",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "lint": "eslint src/ --ext .ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "ioredis": "^5.4.1",
+    "better-sqlite3": "^11.3.0",
+    "sqlite-vec": "^0.1.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.5.0",
+    "@types/better-sqlite3": "^7.6.11",
+    "typescript": "^5.5.4",
+    "tsx": "^4.19.0",
+    "vitest": "^2.0.5",
+    "@typescript-eslint/eslint-plugin": "^8.2.0",
+    "@typescript-eslint/parser": "^8.2.0",
+    "eslint": "^9.9.0"
+  }
+}
