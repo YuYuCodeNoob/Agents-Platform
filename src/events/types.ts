@@ -7,6 +7,7 @@ export type EventType =
   | 'tool.result'
   | 'mq.message.sent'
   | 'mq.message.received'
+  | 'mq.message.delivered'
   | 'task.callback'
   | 'memory.extracted'
   | 'error'

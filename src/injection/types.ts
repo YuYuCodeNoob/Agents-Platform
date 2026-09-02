@@ -4,6 +4,7 @@ export type InjectionSlot =
   | 'system.before_tools'
   | 'system.after_tools'
   | 'user.before'
+  | 'user.before_last'
   | 'user.after'
   | 'user.first_turn'
   | 'tools.append'

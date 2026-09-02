@@ -171,6 +171,13 @@ export class InjectionPipeline {
         } else if (hook.slot.startsWith('user')) {
           if (hook.slot === 'user.before') {
             ctx.context.messages.unshift(block);
+          } else if (hook.slot === 'user.before_last') {
+            const lastIdx = ctx.context.messages.length - 1;
+            if (lastIdx >= 0) {
+              ctx.context.messages.splice(lastIdx, 0, block);
+            } else {
+              ctx.context.messages.push(block);
+            }
           } else {
             ctx.context.messages.push(block);
           }
