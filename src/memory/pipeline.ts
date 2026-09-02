@@ -1,4 +1,5 @@
 import { randomUUID } from 'crypto';
+import { join } from 'path';
 import type { ConversationData } from '../proxy/protocolAdapters/types.js';
 import type { MemoryQuery, MemoryResult, RawMessage, StructuredRecord } from './types.js';
 import { eventBus } from '../events/eventBus.js';
@@ -7,6 +8,10 @@ import { SqliteStore } from './sqliteStore.js';
 import { MarkdownStore } from './markdownStore.js';
 import { sanitizeConversation } from './sanitize.js';
 import type { L1Extractor } from './extraction/l1-extractor.js';
+import type { L2SceneExtractor } from './extraction/l2-scene-extractor.js';
+import type { L3PersonaGenerator } from './extraction/l3-persona-generator.js';
+import type { CheckpointManager } from './extraction/checkpoint.js';
+import { CheckpointManager as CheckpointMgr } from './extraction/checkpoint.js';
 import type { EmbeddingService } from './embedding.js';
 import type { ExtractedMemory, MemoryRecord } from './prompts/l1-dedup.js';
 
@@ -15,6 +20,7 @@ export interface MemoryStoreConfig {
   sqliteDbPath: string;
   skillsDir: string;
   personalityDir: string;
+  dataDir?: string;
 }
 
 export class MemoryPipeline {
@@ -23,15 +29,29 @@ export class MemoryPipeline {
   private markdown: MarkdownStore;
   private extractor?: L1Extractor;
   private embedding?: EmbeddingService;
+  private l2Extractor?: L2SceneExtractor;
+  private l3Generator?: L3PersonaGenerator;
+  private dataDir: string;
+  private l2Locks = new Map<string, Promise<void>>();
+  private l3Locks = new Map<string, Promise<void>>();
 
   constructor(config: MemoryStoreConfig) {
     this.jsonl = new JsonlStore(config.jsonlDir);
     this.sqlite = new SqliteStore(config.sqliteDbPath);
     this.markdown = new MarkdownStore(config.skillsDir, config.personalityDir);
+    this.dataDir = config.dataDir ?? './data';
   }
 
   setExtractor(extractor: L1Extractor): void {
     this.extractor = extractor;
+  }
+
+  setL2Extractor(extractor: L2SceneExtractor): void {
+    this.l2Extractor = extractor;
+  }
+
+  setL3Generator(generator: L3PersonaGenerator): void {
+    this.l3Generator = generator;
   }
 
   setEmbeddingService(embedding: EmbeddingService): void {
@@ -96,7 +116,11 @@ export class MemoryPipeline {
       decisions = extracted.map(() => ({ action: 'store' as const }));
     }
 
-    this.applyDedupDecisions(decisions, extracted, conversation.agentId).catch((err) => {
+    this.applyDedupDecisions(decisions, extracted, conversation.agentId).then(async (storedMemories) => {
+      if (this.l2Extractor && storedMemories.length > 0) {
+        await this.runL2(storedMemories, conversation.agentId);
+      }
+    }).catch((err) => {
       console.error('[Memory] L1 write error:', err);
     });
   }
@@ -127,7 +151,8 @@ export class MemoryPipeline {
     decisions: Array<{ action: string; target_ids?: string[]; merged_content?: string; merged_type?: string; merged_priority?: number; merged_timestamps?: string[] }>,
     extracted: ExtractedMemory[],
     agentId: string
-  ): Promise<void> {
+  ): Promise<ExtractedMemory[]> {
+    const stored: ExtractedMemory[] = [];
     for (let i = 0; i < extracted.length; i++) {
       const mem = extracted[i];
       const decision = decisions[i] ?? { action: 'store' };
@@ -164,12 +189,70 @@ export class MemoryPipeline {
       };
 
       this.sqlite.save(record);
+      stored.push({
+        content,
+        type,
+        priority,
+        scene_name: mem.scene_name,
+        source_message_ids: mem.source_message_ids,
+        metadata: mem.metadata,
+      });
     }
 
     eventBus.emitEvent('memory.extracted', agentId, {
       layer: 'L1',
       extracted: extracted.length,
       stored: decisions.filter((d) => d.action !== 'skip').length,
+    });
+
+    return stored;
+  }
+
+  private async runL2(memories: ExtractedMemory[], agentId: string): Promise<void> {
+    if (!this.l2Extractor) return;
+
+    const prev = this.l2Locks.get(agentId);
+    const next = (prev ?? Promise.resolve()).then(async () => {
+      try {
+        const result = await this.l2Extractor!.extract(memories, agentId);
+        if (result.success) {
+          const sceneDir = this.l2Extractor!.getSceneDir(agentId);
+          const cp = new CheckpointMgr(sceneDir);
+          await cp.incrementScenesProcessed();
+
+          if (this.l3Generator) {
+            await this.runL3(sceneDir, agentId, result);
+          }
+        }
+      } catch (err) {
+        console.error('[Memory] L2 extraction error:', err);
+        eventBus.emitEvent('warning', agentId, { error: 'L2 extraction failed', detail: String(err) });
+      }
+    });
+    this.l2Locks.set(agentId, next);
+    next.finally(() => {
+      if (this.l2Locks.get(agentId) === next) this.l2Locks.delete(agentId);
+    });
+  }
+
+  private async runL3(sceneDir: string, agentId: string, l2Result: { scenesCreated: number; scenesUpdated: number; scenesDeleted: number }): Promise<void> {
+    if (!this.l3Generator) return;
+
+    const prev = this.l3Locks.get(agentId);
+    const next = (prev ?? Promise.resolve()).then(async () => {
+      try {
+        const result = await this.l3Generator!.generate(sceneDir, agentId);
+        if (!result.success) {
+          console.warn('[Memory] L3 persona generation skipped:', result.reason);
+        }
+      } catch (err) {
+        console.error('[Memory] L3 persona generation error:', err);
+        eventBus.emitEvent('warning', agentId, { error: 'L3 generation failed', detail: String(err) });
+      }
+    });
+    this.l3Locks.set(agentId, next);
+    next.finally(() => {
+      if (this.l3Locks.get(agentId) === next) this.l3Locks.delete(agentId);
     });
   }
 
