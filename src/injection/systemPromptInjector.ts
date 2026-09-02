@@ -22,7 +22,7 @@ export class SystemPromptSuffixHook implements InjectionHook {
   slot = 'system.suffix' as const;
   anchor = { slot: 'memory' as const, relation: 'after' as const };
   priority = 100;
-  cacheStrategy = 'session_init' as const;
+  cacheStrategy = 'none' as const;
 
   async execute(_ctx: InjectionContext): Promise<ContentBlock[] | null> {
     return [{

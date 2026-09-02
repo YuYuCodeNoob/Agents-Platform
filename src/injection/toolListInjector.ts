@@ -5,7 +5,7 @@ export class ToolListAppendHook implements InjectionHook {
   id = 'tool-list-append';
   slot = 'tools.append' as const;
   priority = 200;
-  cacheStrategy = 'session_init' as const;
+  cacheStrategy = 'none' as const;
 
   constructor(private toolDefs: ToolDef[]) {}
 
