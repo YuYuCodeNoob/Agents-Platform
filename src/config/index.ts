@@ -8,7 +8,13 @@ export interface GatewayConfig {
   jsonlDir: string;
   skillsDir: string;
   personalityDir: string;
+  dataDir: string;
   imAdapter: string;
+  feishuAppId: string;
+  feishuAppSecret: string;
+  feishuChatId: string;
+  feishuVerificationToken: string;
+  feishuEncryptKey: string;
   logLevel: string;
 }
 
@@ -28,7 +34,13 @@ export function loadConfig(): GatewayConfig {
     jsonlDir: env('JSONL_DIR', './data/messages'),
     skillsDir: env('SKILLS_DIR', './data/skills'),
     personalityDir: env('PERSONALITY_DIR', './data/personality'),
+    dataDir: env('DATA_DIR', './data'),
     imAdapter: env('IM_ADAPTER', 'mock'),
+    feishuAppId: env('FEISHU_APP_ID', ''),
+    feishuAppSecret: env('FEISHU_APP_SECRET', ''),
+    feishuChatId: env('FEISHU_CHAT_ID', ''),
+    feishuVerificationToken: env('FEISHU_VERIFICATION_TOKEN', ''),
+    feishuEncryptKey: env('FEISHU_ENCRYPT_KEY', ''),
     logLevel: env('LOG_LEVEL', 'info'),
   };
 }

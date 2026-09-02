@@ -57,6 +57,8 @@ export class IMSidecar {
         return `[${event.agentId}] → sent message to ${event.data.to} (type: ${event.data.type})`;
       case 'mq.message.received':
         return `[${event.agentId}] ← received ${event.data.count} messages`;
+      case 'mq.message.delivered':
+        return `[${event.agentId}] ← auto-delivered ${event.data.count} message(s) from inbox`;
       case 'task.callback':
         return `[${event.agentId}] ← callback from ${event.data.from} (reply_to: ${event.data.replyTo})`;
       case 'memory.extracted':

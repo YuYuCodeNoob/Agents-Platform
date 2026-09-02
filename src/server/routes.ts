@@ -2,6 +2,7 @@ import type { Router } from './router.js';
 import type { LLMProxyHandler } from '../proxy/llmProxyHandler.js';
 import type { MemoryPipeline } from '../memory/pipeline.js';
 import type { MessageBus } from '../mq/messageBus.js';
+import type { FeishuIMAdapter } from '../im/adapters/feishuAdapter.js';
 import { readJsonBody, sendJson, getAgentId } from './httpUtils.js';
 import { agentRegistry } from '../agents/agentRegistry.js';
 import { toolRegistry } from '../tools/toolRegistry.js';
@@ -13,7 +14,8 @@ export function setupRoutes(
   router: Router,
   llmProxy: LLMProxyHandler,
   memory: MemoryPipeline,
-  mq: MessageBus
+  mq: MessageBus,
+  feishuAdapter?: FeishuIMAdapter
 ): void {
   router.post('/v1/*', async (req, res) => {
     await llmProxy.handle(req, res);
@@ -94,4 +96,66 @@ export function setupRoutes(
   router.get('/gateway/health', async (_req, res) => {
     sendJson(res, 200, { status: 'ok', agents: agentRegistry.listOnline().length });
   });
+
+  if (feishuAdapter) {
+    router.get('/gateway/feishu/auth', async (req, res) => {
+      const url = new URL(req.url ?? '', 'http://localhost');
+      const state = url.searchParams.get('state') ?? undefined;
+      const authUrl = feishuAdapter.getAuthUrl(state);
+      const chatId = feishuAdapter.getChatId();
+      sendJson(res, 200, {
+        authUrl,
+        chatId,
+        message: chatId
+          ? 'Bot is already connected to a chat.'
+          : 'Visit authUrl to scan QR code and authorize the bot.',
+      });
+    });
+
+    router.get('/gateway/feishu/callback', async (req, res) => {
+      const url = new URL(req.url ?? '', 'http://localhost');
+      const code = url.searchParams.get('code');
+      const state = url.searchParams.get('state');
+
+      if (!code) {
+        sendJson(res, 400, { error: 'Missing "code" parameter' });
+        return;
+      }
+
+      const tokenResult = await feishuAdapter.exchangeCodeForToken(code);
+      if (!tokenResult) {
+        sendJson(res, 500, { error: 'Failed to exchange code for token' });
+        return;
+      }
+
+      const ok = await feishuAdapter.ensureChatId();
+
+      sendJson(res, 200, {
+        success: true,
+        state,
+        openId: tokenResult.openId,
+        chatId: feishuAdapter.getChatId(),
+        message: ok
+          ? 'Authorization successful. Bot is connected to a chat.'
+          : 'Authorization successful, but no chat found. Use POST /gateway/feishu/chat/create to create one.',
+      });
+    });
+
+    router.get('/gateway/feishu/chats', async (_req, res) => {
+      const chats = await feishuAdapter.discoverChats();
+      sendJson(res, 200, { chats, current: feishuAdapter.getChatId() });
+    });
+
+    router.post('/gateway/feishu/chat/create', async (req, res) => {
+      const body = await readJsonBody<{ name?: string; description?: string }>(req);
+      const name = body.name ?? 'Gateway Proxy';
+      const chat = await feishuAdapter.createChat(name, body.description);
+      if (chat) {
+        feishuAdapter.setChatId(chat.chatId);
+        sendJson(res, 200, { success: true, chat });
+      } else {
+        sendJson(res, 500, { error: 'Failed to create chat' });
+      }
+    });
+  }
 }
