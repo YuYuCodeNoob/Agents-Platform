@@ -75,14 +75,7 @@ export class MemoryPipeline {
       await this.jsonl.save(msg);
     }
 
-    eventBus.emitEvent('memory.extracted', conversation.agentId, {
-      layer: 'L0',
-      rawCount: rawMessages.length,
-      sanitizedCount: sanitized.length,
-      model: conversation.model,
-    });
-
-    this.extractL1(conversation, sanitized).catch((err) => {
+    this.extractL1(conversation, sanitized, rawMessages.length).catch((err) => {
       console.error('[Memory] L1 extraction error:', err);
       eventBus.emitEvent('warning', conversation.agentId, {
         error: 'L1 extraction failed',
@@ -91,7 +84,7 @@ export class MemoryPipeline {
     });
   }
 
-  private async extractL1(conversation: ConversationData, sanitized: RawMessage[]): Promise<void> {
+  private async extractL1(conversation: ConversationData, sanitized: RawMessage[], rawCount: number): Promise<void> {
     if (!this.extractor || sanitized.length === 0) return;
 
     const convForExtraction: ConversationData = {
@@ -120,8 +113,20 @@ export class MemoryPipeline {
       if (this.l2Extractor && storedMemories.length > 0) {
         await this.runL2(storedMemories, conversation.agentId);
       }
+      eventBus.emitEvent('memory.extracted', conversation.agentId, {
+        layer: 'pipeline',
+        rawCount,
+        l1Extracted: extracted.length,
+        l1Stored: storedMemories.length,
+        l2Enabled: !!this.l2Extractor,
+        l3Enabled: !!this.l3Generator,
+      });
     }).catch((err) => {
       console.error('[Memory] L1 write error:', err);
+      eventBus.emitEvent('warning', conversation.agentId, {
+        error: 'Memory pipeline failed',
+        detail: String(err),
+      });
     });
   }
 
@@ -199,12 +204,6 @@ export class MemoryPipeline {
       });
     }
 
-    eventBus.emitEvent('memory.extracted', agentId, {
-      layer: 'L1',
-      extracted: extracted.length,
-      stored: decisions.filter((d) => d.action !== 'skip').length,
-    });
-
     return stored;
   }
 
@@ -233,6 +232,7 @@ export class MemoryPipeline {
     next.finally(() => {
       if (this.l2Locks.get(agentId) === next) this.l2Locks.delete(agentId);
     });
+    await next;
   }
 
   private async runL3(sceneDir: string, agentId: string, l2Result: { scenesCreated: number; scenesUpdated: number; scenesDeleted: number }): Promise<void> {
@@ -254,6 +254,7 @@ export class MemoryPipeline {
     next.finally(() => {
       if (this.l3Locks.get(agentId) === next) this.l3Locks.delete(agentId);
     });
+    await next;
   }
 
   async query(query: MemoryQuery): Promise<MemoryResult[]> {

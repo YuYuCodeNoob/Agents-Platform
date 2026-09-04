@@ -61,8 +61,11 @@ export class IMSidecar {
         return `[${event.agentId}] ← auto-delivered ${event.data.count} message(s) from inbox`;
       case 'task.callback':
         return `[${event.agentId}] ← callback from ${event.data.from} (reply_to: ${event.data.replyTo})`;
-      case 'memory.extracted':
-        return `[${event.agentId}] Memory extracted: ${event.data.messageCount} messages`;
+      case 'memory.extracted': {
+        const layer = event.data.layer ?? 'unknown';
+        const summary = event.data.l1Stored ?? event.data.scenesCreated ?? event.data.results ?? '';
+        return `[${event.agentId}] Memory [${layer}]${summary ? ': ' + summary : ''}`;
+      }
       case 'error':
         return `[${event.agentId}] ERROR: ${JSON.stringify(event.data)}`;
       case 'warning':
